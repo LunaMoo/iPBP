@@ -23,7 +23,13 @@ jobs:
             exit 1
           fi
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! ctest --test-dir build -C Release --output-on-failure 2>&1 | tee test.log; then
+            grep -E "FAIL|ERROR|runtime error|WARNING: ThreadSanitizer" test.log | head -10 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
       - name: Upload CLI
         uses: actions/upload-artifact@v4
         with:
@@ -35,10 +41,17 @@ jobs:
   sanitizers:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         san: ["address,undefined", "thread"]
     steps:
       - uses: actions/checkout@v4
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DIPBP_BUILD_CLI=OFF -DCMAKE_CXX_FLAGS="-O1 -fno-omit-frame-pointer -fsanitize=${{ matrix.san }}"
       - run: cmake --build build --parallel
-      - run: ctest --test-dir build --output-on-failure --timeout 1200
+      - name: Test
+        run: |
+          set -o pipefail
+          if ! ctest --test-dir build --output-on-failure --timeout 1200 2>&1 | tee test.log; then
+            grep -E "FAIL|ERROR|runtime error|WARNING: ThreadSanitizer|SUMMARY" test.log | head -10 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi

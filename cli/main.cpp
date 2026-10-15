@@ -15,8 +15,9 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <io.h>
-#include <shellapi.h>
 #include <windows.h>
+// shellapi.h must come after windows.h
+#include <shellapi.h>
 #define isatty _isatty
 #define fileno _fileno
 #else
