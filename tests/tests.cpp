@@ -273,7 +273,7 @@ static void testLzrcEncoders() {
                 switch (kind) {
                     case 0: in[i] = (uint8_t)rng(); break;                                     // random
                     case 1: in[i] = 0; break;                                                  // run
-                    case 2: in[i] = i >= 2 ? in[i - 2 - rng() % 2] : 7; break;                 // tiny repeats
+                    case 2: in[i] = i >= 3 ? in[i - 2 - rng() % 2] : 7; break;                 // tiny repeats
                     case 3: in[i] = i >= 300 ? in[i - 300 + (rng() % 4 == 0)] : 3; break;     // mid distance
                     case 4: in[i] = i >= 0x7F00 ? in[i - 0x7F00] : (uint8_t)(i * 7); break;   // far distance
                     default: in[i] = (uint8_t)("PSP game data "[i % 14] ^ (rng() % 16 == 0)); break;
