@@ -16,6 +16,7 @@
 #include "crypto/sha1.h"
 #include "ipbp/ipbp.h"
 #include "ipbp/ipbp.hpp"
+#include "psp/lzrc.h"
 #include "util.h"
 
 using namespace ipbp;
@@ -235,12 +236,67 @@ static void testRoundTrips() {
     CHECK(roundTrip(iso, o));
     o.threads = 7;
     CHECK(roundTrip(iso, o));
+    // max compression: same round trip, never larger than the default
+    {
+        IsoToPbpOptions d, mx;
+        d.deterministicSeed = mx.deterministicSeed = 42;
+        mx.maxCompression = true;
+        std::vector<uint8_t> pd, pm;
+        CHECK(roundTrip(iso, d, &pd));
+        CHECK(roundTrip(iso, mx, &pm));
+        CHECK(pm.size() <= pd.size());
+        mx.threads = 3;
+        CHECK(roundTrip(makeIso(16 * 40, "ULES00001", 5), mx));
+    }
     // exactly whole blocks
     CHECK(roundTrip(makeIso(16 * 40, "ULES00001", 5), IsoToPbpOptions{}));
     // tiny image (single block)
     CHECK(roundTrip(makeIso(30, "NPJH00002", 6), IsoToPbpOptions{}));
     // non sector-aligned input size
     CHECK(roundTrip(makeIso(100, "ULUS10041", 7, 1000), IsoToPbpOptions{}));
+}
+
+// Both LZRC encoders on blocks built to hit the format's edges: 2-3 byte matches (distance must
+// be < 256), long runs (match length cap), distances near the window limit, random data, and
+// every block size up to a full 32 KiB block. Each result must decode back exactly, and max
+// must never be larger.
+static void testLzrcEncoders() {
+    puts("LZRC encoders");
+    std::mt19937 rng(1234);
+    int bad = 0, larger = 0, smaller = 0;
+    std::vector<uint8_t> in(0x8000), o1(0x10000), o2(0x10000), back(0x8000);
+    for (int t = 0; t < 400; t++) {
+        int n = t < 100 ? 1 + (int)(rng() % 0x8000) : 0x8000;
+        for (int i = 0; i < n;) {
+            int kind = rng() % 6, len = 1 + rng() % 600;
+            for (int k = 0; k < len && i < n; k++, i++) {
+                switch (kind) {
+                    case 0: in[i] = (uint8_t)rng(); break;                                     // random
+                    case 1: in[i] = 0; break;                                                  // run
+                    case 2: in[i] = i >= 2 ? in[i - 2 - rng() % 2] : 7; break;                 // tiny repeats
+                    case 3: in[i] = i >= 300 ? in[i - 300 + (rng() % 4 == 0)] : 3; break;     // mid distance
+                    case 4: in[i] = i >= 0x7F00 ? in[i - 0x7F00] : (uint8_t)(i * 7); break;   // far distance
+                    default: in[i] = (uint8_t)("PSP game data "[i % 14] ^ (rng() % 16 == 0)); break;
+                }
+            }
+        }
+        int c1 = ipbp::psp::lzrcCompress(o1.data(), (int)o1.size() - 16, in.data(), n);
+        int c2 = ipbp::psp::lzrcCompressMax(o2.data(), (int)o2.size() - 16, in.data(), n);
+        if (c1 <= 0 || c2 <= 0) {
+            bad++;
+            continue;
+        }
+        for (auto [o, c] : {std::pair<uint8_t*, int>{o1.data(), c1}, {o2.data(), c2}}) {
+            int d = ipbp::psp::lzrcDecompress(back.data(), n, o, c);
+            if (d != n || memcmp(back.data(), in.data(), n) != 0) bad++;
+        }
+        if (c2 > c1) larger++;
+        if (c2 < c1) smaller++;
+    }
+    CHECK(bad == 0);
+    CHECK(larger == 0);
+    CHECK(smaller > 200);
+    printf("  max smaller on %d/400 blocks\n", smaller);
 }
 
 static void testKeysAndIds() {
@@ -487,6 +543,11 @@ static void testCApi() {
     CHECK(ipbp_pbp_to_iso(job, pbpP.c_str(), outP.c_str(), nullptr) == IPBP_OK);
     CHECK(readFile(outP) == iso);
     std::remove(outP.c_str());
+    io.compress = IPBP_COMPRESS_MAX;
+    CHECK(ipbp_iso_to_pbp(job, isoP.c_str(), pbpP.c_str(), &io) == IPBP_OK);
+    CHECK(ipbp_pbp_to_iso(job, pbpP.c_str(), outP.c_str(), nullptr) == IPBP_OK);
+    CHECK(readFile(outP) == iso);
+    std::remove(outP.c_str());
     // cancel
     ctx.calls = 0;
     ctx.cancelAt2 = true;
@@ -536,6 +597,7 @@ static void testDumpCheck() {
 }
 
 int main() {
+    testLzrcEncoders();
     testRoundTrips();
     testKeysAndIds();
     testSignatures();
