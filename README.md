@@ -89,6 +89,19 @@ ctest --test-dir build -C Release      # self-contained, no game data needed
 
 CMake options: `IPBP_BUILD_CLI` (ON), `IPBP_BUILD_TESTS` (ON), `IPBP_SHARED` (OFF, builds a DLL / .so with the C API exported). The library file is named `iPBP` on every platform (`iPBP.dll`, `iPBP.so`, `iPBP.dylib`, `iPBP.lib`, `iPBP.a`). To embed iPBP in another CMake project, use `add_subdirectory(iPBP)` and `target_link_libraries(app PRIVATE ipbp)`.
 
+### Visual Studio
+
+Open `msvc/iPBP.sln` (Visual Studio 2022 or newer with the "Desktop development with C++" workload; it uses whichever toolset is installed). Platforms x86, x64 and ARM64, configurations Debug and Release. Everything goes to `build/msvc/<Platform>/<Configuration>/`:
+
+| Project | Output |
+|---|---|
+| `iPBP` | `iPBP.lib`, the static library |
+| `iPBP_dll` | `dll/iPBP.dll` and its import library `dll/iPBP.lib`, exporting the C API |
+| `ipbp_cli` | `ipbp.exe` |
+| `ipbp_tests` | `ipbp_tests.exe` |
+
+The CRT is linked statically (`/MT`), so `iPBP.dll` and `ipbp.exe` don't need the Visual C++ redistributable. From the command line: `msbuild msvc\iPBP.sln /p:Configuration=Release /p:Platform=x64`.
+
 ## Format notes
 
 * **PBP**: `PARAM.SFO` (DISC_ID taken from the content id, CATEGORY set to `EG`), ICON0/ICON1/PIC0/PIC1/SND0 copied from `PSP_GAME`, then `DATA.PSP`, which holds the content id, NP flags and an ECDSA signature, plus an optional `STARTDAT` boot image.
