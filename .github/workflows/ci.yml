@@ -9,11 +9,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        shared: [OFF, ON]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DIPBP_SHARED=${{ matrix.shared }}
       - name: Build
         shell: bash
         run: |
@@ -33,7 +34,7 @@ jobs:
       - name: Upload CLI
         uses: actions/upload-artifact@v4
         with:
-          name: ipbp-${{ matrix.os }}
+          name: ipbp-${{ matrix.os }}-shared-${{ matrix.shared }}
           path: |
             build/ipbp
             build/Release/ipbp.exe
