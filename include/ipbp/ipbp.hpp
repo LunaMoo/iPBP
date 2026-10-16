@@ -18,7 +18,7 @@
 namespace ipbp {
 
 constexpr int kVersionMajor = 1;
-constexpr int kVersionMinor = 0;
+constexpr int kVersionMinor = 2;
 constexpr int kVersionPatch = 0;
 
 enum class Status {
@@ -113,6 +113,9 @@ Result isoToPbp(InputStream& iso, OutputStream& pbp, const IsoToPbpOptions& opt 
 // Path variant: writes to "<pbpPath>.part" and renames on success; the partial file is
 // removed on error or cancellation.
 Result isoToPbp(const std::string& isoPath, const std::string& pbpPath, const IsoToPbpOptions& opt = {},
+                const Callbacks& cb = {});
+// Stream input, path output (the same .part handling).
+Result isoToPbp(InputStream& iso, const std::string& pbpPath, const IsoToPbpOptions& opt = {},
                 const Callbacks& cb = {});
 
 // ---------------------------------------------------------------- PBP -> ISO

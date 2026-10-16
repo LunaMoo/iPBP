@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: see LICENSE
 #include <cstring>
+#include <memory>
 #include <string>
 
 #include "ipbp/ipbp.h"
@@ -51,7 +52,36 @@ void ipbp_pbp2iso_options_init(ipbp_pbp2iso_options* opt) {
     opt->trim = 0;
 }
 
-int ipbp_iso_to_pbp(ipbp_job* job, const char* iso, const char* pbp, const ipbp_iso2pbp_options* o) {
+}  // extern "C"
+
+namespace {
+
+class CallbackInput : public ipbp::InputStream {
+public:
+    explicit CallbackInput(const ipbp_reader& r) : r_(r) {}
+    uint64_t size() const override { return r_.size; }
+    bool readAt(uint64_t offset, void* buf, size_t len) override {
+        if (offset > r_.size || len > r_.size - offset) return false;
+        return r_.read_at(r_.user, offset, buf, len) == 0;
+    }
+
+private:
+    ipbp_reader r_;
+};
+
+class CallbackOutput : public ipbp::OutputStream {
+public:
+    explicit CallbackOutput(const ipbp_writer& w) : w_(w) {}
+    bool writeAt(uint64_t offset, const void* buf, size_t len) override {
+        return w_.write_at(w_.user, offset, buf, len) == 0;
+    }
+    bool finish(uint64_t finalSize) override { return !w_.finish || w_.finish(w_.user, finalSize) == 0; }
+
+private:
+    ipbp_writer w_;
+};
+
+ipbp::IsoToPbpOptions isoToPbpOptions(const ipbp_iso2pbp_options* o) {
     ipbp_iso2pbp_options def;
     if (!o) {
         ipbp_iso2pbp_options_init(&def);
@@ -69,11 +99,10 @@ int ipbp_iso_to_pbp(ipbp_job* job, const char* iso, const char* pbp, const ipbp_
     if (o->startdat_png && o->startdat_png_size)
         opt.startdatPng.assign(o->startdat_png, o->startdat_png + o->startdat_png_size);
     opt.threads = o->threads;
-    job->cancel.reset();
-    return job->finish(ipbp::isoToPbp(iso, pbp, opt, job->callbacks()));
+    return opt;
 }
 
-int ipbp_pbp_to_iso(ipbp_job* job, const char* pbp, const char* iso, const ipbp_pbp2iso_options* o) {
+ipbp::PbpToIsoOptions pbpToIsoOptions(const ipbp_pbp2iso_options* o) {
     ipbp_pbp2iso_options def;
     if (!o) {
         ipbp_pbp2iso_options_init(&def);
@@ -83,8 +112,45 @@ int ipbp_pbp_to_iso(ipbp_job* job, const char* pbp, const char* iso, const ipbp_
     opt.verify = o->verify != 0;
     opt.trimToVolumeSize = o->trim != 0;
     opt.threads = o->threads;
+    return opt;
+}
+
+}  // namespace
+
+extern "C" {
+
+int ipbp_iso_to_pbp(ipbp_job* job, const char* iso, const char* pbp, const ipbp_iso2pbp_options* o) {
     job->cancel.reset();
-    return job->finish(ipbp::pbpToIso(pbp, iso, opt, job->callbacks()));
+    return job->finish(ipbp::isoToPbp(iso, pbp, isoToPbpOptions(o), job->callbacks()));
+}
+
+int ipbp_iso_to_pbp_reader(ipbp_job* job, const ipbp_reader* iso, const char* pbp, const ipbp_iso2pbp_options* o) {
+    job->cancel.reset();
+    if (!iso || !iso->read_at || !pbp)
+        return job->finish(ipbp::Result::fail(ipbp::Status::InvalidInput, "missing reader or output path"));
+    CallbackInput in(*iso);
+    return job->finish(ipbp::isoToPbp(in, pbp, isoToPbpOptions(o), job->callbacks()));
+}
+
+int ipbp_pbp_to_iso(ipbp_job* job, const char* pbp, const char* iso, const ipbp_pbp2iso_options* o) {
+    job->cancel.reset();
+    return job->finish(ipbp::pbpToIso(pbp, iso, pbpToIsoOptions(o), job->callbacks()));
+}
+
+int ipbp_pbp_to_iso_writer(ipbp_job* job, const char* pbp, const ipbp_writer* iso, const ipbp_pbp2iso_options* o) {
+    job->cancel.reset();
+    if (!pbp || !iso || !iso->write_at)
+        return job->finish(ipbp::Result::fail(ipbp::Status::InvalidInput, "missing input path or writer"));
+    std::string err;
+    std::unique_ptr<ipbp::InputStream> in = ipbp::openInputFile(pbp, &err);
+    if (!in) return job->finish(ipbp::Result::fail(ipbp::Status::IoError, err));
+    ipbp::PbpInfo info;
+    ipbp::Result r = ipbp::readPbpInfo(*in, info);
+    if (!r) return job->finish(r);
+    if (iso->begin && iso->begin(iso->user, info.isoSize) != 0)
+        return job->finish(ipbp::Result::fail(ipbp::Status::IoError, "the output refused the image size"));
+    CallbackOutput out(*iso);
+    return job->finish(ipbp::pbpToIso(*in, out, pbpToIsoOptions(o), job->callbacks()));
 }
 
 int ipbp_read_pbp_info(ipbp_job* job, const char* pbp, ipbp_pbp_info* info) {
@@ -113,6 +179,6 @@ int ipbp_check_iso(ipbp_job* job, const char* iso, uint64_t* fileSize, uint64_t*
     return job->finish(r);
 }
 
-const char* ipbp_version(void) { return "1.1.0"; }
+const char* ipbp_version(void) { return "1.2.0"; }
 
 }  // extern "C"

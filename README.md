@@ -81,6 +81,8 @@ if (rc != IPBP_OK) printf("%s\n", ipbp_job_error(job));
 ipbp_job_destroy(job);
 ```
 
+`ipbp_iso_to_pbp_reader()` reads the ISO through an `ipbp_reader` and `ipbp_pbp_to_iso_writer()` writes it through an `ipbp_writer` (since 1.2.0), so a host can keep the ISO in memory, e.g. to repack an EBOOT as CSO or CHD without a temporary file.
+
 ## Building
 
 ```

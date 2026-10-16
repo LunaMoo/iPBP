@@ -563,6 +563,69 @@ static void testCApi() {
     std::remove(pbpP.c_str());
 }
 
+// The callback variants: ISO from memory -> PBP file -> ISO into memory.
+static void testCApiCallbacks() {
+    puts("C API callbacks");
+    auto iso = makeIso(500, "ULJM05001");
+    std::string pbpP = tmpPath("cb.pbp");
+    ipbp_job* job = ipbp_job_create();
+
+    struct Src {
+        const std::vector<uint8_t>* d;
+    } src{&iso};
+    ipbp_reader r;
+    r.user = &src;
+    r.size = iso.size();
+    r.read_at = [](void* u, uint64_t off, void* buf, size_t len) -> int {
+        const auto& d = *((Src*)u)->d;
+        if (off + len > d.size()) return 1;
+        memcpy(buf, d.data() + off, len);
+        return 0;
+    };
+    CHECK(ipbp_iso_to_pbp_reader(job, &r, pbpP.c_str(), nullptr) == IPBP_OK);
+    CHECK(!exists(pbpP + ".part"));
+
+    struct Dst {
+        std::vector<uint8_t> d;
+        uint64_t begun = 0, finished = 0;
+        bool refuse = false;
+    };
+    ipbp_writer w;
+    w.begin = [](void* u, uint64_t size) -> int {
+        auto* d = (Dst*)u;
+        if (d->refuse) return 1;
+        d->begun = size;
+        d->d.assign((size_t)size, 0);
+        return 0;
+    };
+    w.write_at = [](void* u, uint64_t off, const void* buf, size_t len) -> int {
+        auto* d = (Dst*)u;
+        if (off + len > d->d.size()) return 1;
+        memcpy(d->d.data() + off, buf, len);
+        return 0;
+    };
+    w.finish = [](void* u, uint64_t size) -> int {
+        auto* d = (Dst*)u;
+        d->finished = size;
+        d->d.resize((size_t)size);
+        return 0;
+    };
+    Dst dst;
+    w.user = &dst;
+    CHECK(ipbp_pbp_to_iso_writer(job, pbpP.c_str(), &w, nullptr) == IPBP_OK);
+    CHECK(dst.begun >= dst.finished && dst.finished == iso.size());
+    CHECK(dst.d == iso);
+
+    Dst refused;
+    refused.refuse = true;
+    w.user = &refused;
+    CHECK(ipbp_pbp_to_iso_writer(job, pbpP.c_str(), &w, nullptr) == IPBP_IO_ERROR);
+    CHECK(refused.d.empty());
+
+    ipbp_job_destroy(job);
+    std::remove(pbpP.c_str());
+}
+
 static void testDumpCheck() {
     puts("ISO dump check");
     IsoDumpCheck c;
@@ -607,6 +670,7 @@ int main() {
     testCancelFromCallback();
     testCancelFromThreadAndFiles();
     testCApi();
+    testCApiCallbacks();
     testDumpCheck();
     printf("%d/%d checks passed\n", g_checks - g_failures, g_checks);
     return g_failures ? 1 : 0;

@@ -100,6 +100,35 @@ IPBP_API int ipbp_iso_to_pbp(ipbp_job* job, const char* iso_path, const char* pb
                              const ipbp_iso2pbp_options* opt);
 IPBP_API int ipbp_pbp_to_iso(ipbp_job* job, const char* pbp_path, const char* iso_path,
                              const ipbp_pbp2iso_options* opt);
+/* The image on the caller's side instead of in a file, e.g. to repack a game through memory
+ * without a temporary ISO on disk. Available since 1.2.0. The callbacks run on the converting
+ * thread, and return 0 on success. */
+typedef struct ipbp_reader {
+    void* user;
+    uint64_t size;
+    /* Read exactly len bytes at offset. */
+    int (*read_at)(void* user, uint64_t offset, void* buf, size_t len);
+} ipbp_reader;
+
+typedef struct ipbp_writer {
+    void* user;
+    /* Optional. Called once with the image size before anything is written; nonzero fails
+     * with IPBP_IO_ERROR (e.g. when that much memory isn't available). */
+    int (*begin)(void* user, uint64_t size);
+    /* Write len bytes at offset (any order, within the size). */
+    int (*write_at)(void* user, uint64_t offset, const void* buf, size_t len);
+    /* Optional. Called once at the end with the final size, at most the one begin got. */
+    int (*finish)(void* user, uint64_t final_size);
+} ipbp_writer;
+
+/* ipbp_iso_to_pbp reading the ISO through iso. */
+IPBP_API int ipbp_iso_to_pbp_reader(ipbp_job* job, const ipbp_reader* iso, const char* pbp_path,
+                                    const ipbp_iso2pbp_options* opt);
+/* ipbp_pbp_to_iso writing the ISO through iso. On failure or cancellation what was written stays
+ * with the caller. */
+IPBP_API int ipbp_pbp_to_iso_writer(ipbp_job* job, const char* pbp_path, const ipbp_writer* iso,
+                                    const ipbp_pbp2iso_options* opt);
+
 IPBP_API int ipbp_read_pbp_info(ipbp_job* job, const char* pbp_path, ipbp_pbp_info* info);
 
 /* ISO dump size check (file size vs ISO9660 volume size). Returns IPBP_OK when the image could

@@ -625,16 +625,14 @@ std::string suggestedIsoName(const PbpInfo& info) {
 namespace {
 
 template <typename Fn>
-Result runToFile(const std::string& inPath, const std::string& outPath, Fn fn) {
+Result runToPath(InputStream& in, const std::string& outPath, Fn fn) {
     std::string err;
-    auto in = openInputFile(inPath, &err);
-    if (!in) return Result::fail(Status::IoError, err);
     std::string part = outPath + ".part";
     Result r;
     {
         auto out = openOutputFile(part, &err);
         if (!out) return Result::fail(Status::IoError, err);
-        r = fn(*in, *out);
+        r = fn(in, *out);
     }
     if (!r) {
         detail::removeFile(part);
@@ -647,7 +645,19 @@ Result runToFile(const std::string& inPath, const std::string& outPath, Fn fn) {
     return r;
 }
 
+template <typename Fn>
+Result runToFile(const std::string& inPath, const std::string& outPath, Fn fn) {
+    std::string err;
+    auto in = openInputFile(inPath, &err);
+    if (!in) return Result::fail(Status::IoError, err);
+    return runToPath(*in, outPath, fn);
+}
+
 }  // namespace
+
+Result isoToPbp(InputStream& iso, const std::string& pbpPath, const IsoToPbpOptions& opt, const Callbacks& cb) {
+    return runToPath(iso, pbpPath, [&](InputStream& i, OutputStream& o) { return isoToPbp(i, o, opt, cb); });
+}
 
 Result isoToPbp(const std::string& isoPath, const std::string& pbpPath, const IsoToPbpOptions& opt, const Callbacks& cb) {
     return runToFile(isoPath, pbpPath, [&](InputStream& i, OutputStream& o) { return isoToPbp(i, o, opt, cb); });
