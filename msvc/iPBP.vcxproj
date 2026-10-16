@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings shared by all projects live in iPBP.Common.props. -->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|ARM64">
+      <Configuration>Debug</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ARM64">
+      <Configuration>Release</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{5E0B7C1A-3F2D-4B8E-9A61-1C2D3E4F5A61}</ProjectGuid>
+    <RootNamespace>iPBP</RootNamespace>
+    <VCProjectVersion>17.0</VCProjectVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="iPBP.Common.props" />
+  </ImportGroup>
+  <PropertyGroup>
+    <OutDir>$(IpbpOutDir)</OutDir>
+    <TargetName>iPBP</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\capi.cpp" />
+    <ClCompile Include="..\src\convert.cpp" />
+    <ClCompile Include="..\src\io.cpp" />
+    <ClCompile Include="..\src\util.cpp" />
+    <ClCompile Include="..\src\crypto\aes.cpp" />
+    <ClCompile Include="..\src\crypto\ecdsa.cpp" />
+    <ClCompile Include="..\src\crypto\sha1.cpp" />
+    <ClCompile Include="..\src\psp\amctrl.cpp" />
+    <ClCompile Include="..\src\psp\iso9660.cpp" />
+    <ClCompile Include="..\src\psp\lzrc.cpp" />
+    <ClCompile Include="..\src\psp\sfo.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\include\ipbp\ipbp.h" />
+    <ClInclude Include="..\include\ipbp\ipbp.hpp" />
+    <ClInclude Include="..\src\util.h" />
+    <ClInclude Include="..\src\crypto\aes.h" />
+    <ClInclude Include="..\src\crypto\ecdsa.h" />
+    <ClInclude Include="..\src\crypto\sha1.h" />
+    <ClInclude Include="..\src\psp\amctrl.h" />
+    <ClInclude Include="..\src\psp\iso9660.h" />
+    <ClInclude Include="..\src\psp\lzrc.h" />
+    <ClInclude Include="..\src\psp\sfo.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

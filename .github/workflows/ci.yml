@@ -39,6 +39,31 @@ jobs:
             build/ipbp
             build/Release/ipbp.exe
 
+  msbuild:
+    name: Visual Studio solution ${{ matrix.platform }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x86, x64, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build
+        run: msbuild msvc\iPBP.sln /m /p:Configuration=Release /p:Platform=${{ matrix.platform }}
+      - name: Test
+        # ARM64 binaries don't run on the x64 runner.
+        if: ${{ matrix.platform != 'ARM64' }}
+        shell: pwsh
+        run: |
+          $plat = if ('${{ matrix.platform }}' -eq 'x86') { 'Win32' } else { '${{ matrix.platform }}' }
+          $dir = "build\msvc\$plat\Release"
+          foreach ($f in "ipbp.exe", "iPBP.lib", "dll\iPBP.dll", "dll\iPBP.lib") {
+            if (-not (Test-Path "$dir\$f")) { Write-Output "::error::$f was not built"; exit 1 }
+          }
+          & "$dir\ipbp_tests.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   sanitizers:
     runs-on: ubuntu-latest
     strategy:
