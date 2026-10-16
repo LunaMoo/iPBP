@@ -43,8 +43,7 @@ enum {
 
 /* Values for ipbp_iso2pbp_options.compress. Any other non-zero value means IPBP_COMPRESS_LZRC.
  * MAX searches much harder for the smallest LZRC (optimal parsing, about 5-10x slower): still
- * plain LZRC that real PSPs decode, but no longer byte-identical to sign_np's output.
- * Available since iPBP 1.1.0 (ipbp_version() >= "1.1.0"); older versions treat 2 as LZRC. */
+ * plain LZRC that real PSPs decode, but no longer byte-identical to sign_np's output. */
 #define IPBP_COMPRESS_NONE 0
 #define IPBP_COMPRESS_LZRC 1
 #define IPBP_COMPRESS_MAX 2
