@@ -39,6 +39,9 @@ void WorkerPool::loop() {
             cv_.wait(l, [&] { return stop_ || generation_ != seen; });
             if (stop_) return;
             seen = generation_;
+            // Woken too late: that run() already finished without us. Its n_ and the shared
+            // next_ may belong to a newer run by the time we'd use them, so skip it.
+            if (!job_) continue;
             job = job_;
             n = n_;
             active_++;
