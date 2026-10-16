@@ -113,6 +113,6 @@ int ipbp_check_iso(ipbp_job* job, const char* iso, uint64_t* fileSize, uint64_t*
     return job->finish(r);
 }
 
-const char* ipbp_version(void) { return "1.0.0"; }
+const char* ipbp_version(void) { return "1.1.0"; }
 
 }  // extern "C"
