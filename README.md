@@ -87,7 +87,7 @@ cmake --build build --config Release
 ctest --test-dir build -C Release      # self-contained, no game data needed
 ```
 
-CMake options: `IPBP_BUILD_CLI` (ON), `IPBP_BUILD_TESTS` (ON), `IPBP_SHARED` (OFF, builds a DLL / .so with the C API exported). To embed iPBP in another CMake project, use `add_subdirectory(iPBP)` and `target_link_libraries(app PRIVATE ipbp)`.
+CMake options: `IPBP_BUILD_CLI` (ON), `IPBP_BUILD_TESTS` (ON), `IPBP_SHARED` (OFF, builds a DLL / .so with the C API exported). The library file is named `iPBP` on every platform (`iPBP.dll`, `iPBP.so`, `iPBP.dylib`, `iPBP.lib`, `iPBP.a`). To embed iPBP in another CMake project, use `add_subdirectory(iPBP)` and `target_link_libraries(app PRIVATE ipbp)`.
 
 ## Format notes
 
