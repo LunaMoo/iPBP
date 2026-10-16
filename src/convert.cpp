@@ -297,7 +297,9 @@ Result isoToPbp(InputStream& iso, OutputStream& out, const IsoToPbpOptions& opt,
             s.compressed = false;
             s.size = kBlockSize;
             if (opt.compress) {
-                int c = psp::lzrcCompress(s.packed.data(), (int)s.packed.size() - 16, s.raw.data(), kBlockSize);
+                int c = opt.maxCompression
+                            ? psp::lzrcCompressMax(s.packed.data(), (int)s.packed.size() - 16, s.raw.data(), kBlockSize)
+                            : psp::lzrcCompress(s.packed.data(), (int)s.packed.size() - 16, s.raw.data(), kBlockSize);
                 if (c > 0 && (uint64_t)c * 100 <= 0x2CFFFF) {  // sign_np: keep only if <= ~90%
                     uint32_t aligned = (c + 15) & ~15u;
                     memset(s.packed.data() + c, 0, aligned - c);

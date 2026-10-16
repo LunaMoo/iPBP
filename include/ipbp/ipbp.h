@@ -41,6 +41,13 @@ enum {
     IPBP_VERIFY_FAILED = 5,
 };
 
+/* Values for ipbp_iso2pbp_options.compress. Any other non-zero value means IPBP_COMPRESS_LZRC.
+ * MAX searches much harder for the smallest LZRC (optimal parsing, about 5-10x slower): still
+ * plain LZRC that real PSPs decode, but no longer byte-identical to sign_np's output. */
+#define IPBP_COMPRESS_NONE 0
+#define IPBP_COMPRESS_LZRC 1
+#define IPBP_COMPRESS_MAX 2
+
 typedef struct ipbp_job ipbp_job;
 
 /* Progress callback: bytes done / total. Called on the converting thread. */
@@ -49,7 +56,7 @@ typedef void (*ipbp_progress_fn)(void* user, uint64_t done, uint64_t total);
 typedef void (*ipbp_log_fn)(void* user, const char* line);
 
 typedef struct ipbp_iso2pbp_options {
-    int compress;                /* non-zero: LZRC-compress blocks (default 1) */
+    int compress;                /* IPBP_COMPRESS_NONE / _LZRC (default) / _MAX, see below */
     const char* content_id;      /* NULL: "UP0000-<DISC_ID>_00-0000000000000000" */
     const uint8_t* version_key;  /* 16 bytes, NULL: fixed key derived from content id */
     const uint8_t* startdat_png; /* optional boot screen PNG (480x272) */

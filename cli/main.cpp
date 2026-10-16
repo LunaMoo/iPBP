@@ -61,6 +61,8 @@ void usage() {
             "\n"
             "ISO -> PBP options:\n"
             "  -n, --no-compress        store blocks uncompressed\n"
+            "  -m, --max                smallest LZRC (much slower; still decodes on a PSP,\n"
+            "                           but not byte-identical to sign_np)\n"
             "  -c, --content-id ID      content id XXYYYY-AAAABBBBB_CC-DDDDDDDDDDDDDDDD\n"
             "                           (default UP0000-<DISC_ID>_00-0000000000000000)\n"
             "  -k, --version-key HEX    16-byte version key as 32 hex digits (default: fixed key)\n"
@@ -236,6 +238,7 @@ int main(int argc, char** argv) {
             usage();
             return 0;
         } else if (a == "-n" || a == "--no-compress") iopt.compress = false;
+        else if (a == "-m" || a == "--max") iopt.maxCompression = true;
         else if (a == "-c" || a == "--content-id") iopt.contentId = need("--content-id");
         else if (a == "-k" || a == "--version-key") {
             std::array<uint8_t, 16> k;

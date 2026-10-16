@@ -89,6 +89,9 @@ std::unique_ptr<OutputStream> openOutputFile(const std::string& utf8Path, std::s
 struct IsoToPbpOptions {
     // LZRC-compress blocks (only kept when they shrink to <= 90%, like sign_np -c).
     bool compress = true;
+    // With compress: search harder for the smallest LZRC (optimal parsing), about 5-10x slower.
+    // Still plain LZRC that the PSP decodes, but no longer byte-identical to sign_np's output.
+    bool maxCompression = false;
     // Content ID "XXYYYY-AAAABBBBB_CC-DDDDDDDDDDDDDDDD". Empty: "UP0000-<DISC_ID>_00-0000000000000000".
     std::string contentId;
     // Version key. Empty: NPDRM fixed key derived from the content id (NP flags 0x01000003),

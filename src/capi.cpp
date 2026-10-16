@@ -58,7 +58,8 @@ int ipbp_iso_to_pbp(ipbp_job* job, const char* iso, const char* pbp, const ipbp_
         o = &def;
     }
     ipbp::IsoToPbpOptions opt;
-    opt.compress = o->compress != 0;
+    opt.compress = o->compress != IPBP_COMPRESS_NONE;
+    opt.maxCompression = o->compress == IPBP_COMPRESS_MAX;
     if (o->content_id) opt.contentId = o->content_id;
     if (o->version_key) {
         std::array<uint8_t, 16> k;

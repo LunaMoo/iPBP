@@ -15,6 +15,7 @@ Compared with the original:
 
 * **Cancellable.** Any conversion can be stopped from another thread or with Ctrl+C. It stops within milliseconds and the partial output file is deleted.
 * **Multi-threaded** LZRC compression, block encryption and decryption.
+* Optional **max compression** (`--max`, `IPBP_COMPRESS_MAX`): the same LZRC format, chosen by its actual coding cost (optimal parsing) instead of greedy matching, about 1–2% smaller on compressible data.
 * **Portable.** C++17 with no dependencies. Builds on Windows, Linux and macOS, and paths are UTF-8 (Unicode file names work on Windows too).
 * **Embeddable.** Supports streams, so a host such as an emulator can convert from its own virtual file system.
 
@@ -33,6 +34,7 @@ ipbp check game.iso                 # good dump / overdump / underdump
 | Option | |
 |---|---|
 | `-n, --no-compress` | store blocks uncompressed (default: LZRC, kept when a block shrinks to ≤ 90%) |
+| `-m, --max` | smallest LZRC: optimal parsing instead of greedy, about 5–10× slower. Still plain LZRC that real PSPs decode, but not byte-identical to sign_np |
 | `-c, --content-id ID` | `XXYYYY-AAAABBBBB_CC-DDDDDDDDDDDDDDDD` (default `UP0000-<DISC_ID>_00-0000000000000000`) |
 | `-k, --version-key HEX` | 32 hex digits (default: the NPDRM fixed key, NP flags `0x01000003`) |
 | `-s, --startdat FILE` | boot screen PNG |
