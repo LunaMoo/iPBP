@@ -16,7 +16,7 @@ Compared with the original:
 * **Cancellable.** Any conversion can be stopped from another thread or with Ctrl+C. It stops within milliseconds and the partial output file is deleted.
 * **Multi-threaded** LZRC compression, block encryption and decryption.
 * Optional **max compression** (`--max`, `IPBP_COMPRESS_MAX`): the same LZRC format, chosen by its actual coding cost (optimal parsing) instead of greedy matching, about 1–2% smaller on compressible data.
-* **Portable.** C++17 with no dependencies. Builds on Windows, Linux and macOS, and paths are UTF-8 (Unicode file names work on Windows too).
+* **Portable.** C++17 with no dependencies. Builds on Windows, Linux, macOS, Android and iOS, and paths are UTF-8 (Unicode file names work on Windows too).
 * **Embeddable.** Supports streams, so a host such as an emulator can convert from its own virtual file system.
 
 ## Command line
@@ -90,6 +90,31 @@ ctest --test-dir build -C Release      # self-contained, no game data needed
 ```
 
 CMake options: `IPBP_BUILD_CLI` (ON), `IPBP_BUILD_TESTS` (ON), `IPBP_SHARED` (OFF, builds a DLL / .so with the C API exported). The library file is named `iPBP` on every platform (`iPBP.dll`, `iPBP.so`, `iPBP.dylib`, `iPBP.lib`, `iPBP.a`). To embed iPBP in another CMake project, use `add_subdirectory(iPBP)` and `target_link_libraries(app PRIVATE ipbp)`.
+
+### Platforms
+
+CI builds all of these on every push:
+
+| Platform | Architectures | Shared library |
+|---|---|---|
+| Windows (MSVC, CMake or the solution) | x86, x64, ARM64 | `iPBP.dll` (+ `iPBP.lib`) |
+| Linux | x64 | `iPBP.so` |
+| macOS | arm64, x86_64 (universal) | `iPBP.dylib` |
+| Android (NDK, API 21+) | arm64-v8a, armeabi-v7a, x86_64, x86 | `iPBP.so` |
+| iOS (12.0+) | arm64 | `iPBP.dylib` |
+
+```
+# Android, one ABI per build tree
+cmake -S . -B build-android-arm64 -DCMAKE_BUILD_TYPE=Release -DIPBP_SHARED=ON -DIPBP_BUILD_CLI=OFF -DIPBP_BUILD_TESTS=OFF \
+  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21
+# iOS (on a Mac with Xcode)
+cmake -S . -B build-ios -DCMAKE_BUILD_TYPE=Release -DIPBP_SHARED=ON -DIPBP_BUILD_CLI=OFF -DIPBP_BUILD_TESTS=OFF \
+  -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+# macOS universal
+cmake -S . -B build-mac -DCMAKE_BUILD_TYPE=Release -DIPBP_SHARED=ON "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+```
+
+On iOS a `.dylib` can only be loaded if it is signed together with the app (or on a jailbroken / TrollStore device); link the static `iPBP.a` into the app when that isn't possible.
 
 ### Visual Studio
 

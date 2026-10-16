@@ -39,6 +39,84 @@ jobs:
             build/ipbp
             build/Release/ipbp.exe
 
+  macos-universal:
+    name: macOS universal (arm64 + x86_64)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DIPBP_SHARED=ON "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Check
+        run: |
+          lipo -archs build/iPBP.dylib | grep -q x86_64
+          lipo -archs build/iPBP.dylib | grep -q arm64
+          nm -gU build/iPBP.dylib | grep -q _ipbp_iso_to_pbp
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iPBP-macos-universal
+          path: |
+            build/iPBP.dylib
+            build/ipbp
+
+  android:
+    name: Android ${{ matrix.abi }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86_64, x86]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake
+          -DANDROID_ABI=${{ matrix.abi }} -DANDROID_PLATFORM=android-21
+          -DIPBP_SHARED=ON -DIPBP_BUILD_CLI=OFF -DIPBP_BUILD_TESTS=OFF
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Check exports
+        run: |
+          test -f build/iPBP.so
+          $ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf --dyn-syms build/iPBP.so | grep -q ipbp_iso_to_pbp
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iPBP-android-${{ matrix.abi }}
+          path: build/iPBP.so
+
+  ios:
+    name: iOS arm64 ${{ matrix.shared == 'ON' && 'shared' || 'static' }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shared: [ON, OFF]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+          -DIPBP_SHARED=${{ matrix.shared }} -DIPBP_BUILD_CLI=OFF -DIPBP_BUILD_TESTS=OFF
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Check
+        run: |
+          f=build/iPBP.$([ "${{ matrix.shared }}" = ON ] && echo dylib || echo a)
+          test -f $f
+          if [ "${{ matrix.shared }}" = ON ]; then
+            otool -l $f | grep -A4 LC_BUILD_VERSION | grep -q "platform 2"
+            nm -gU $f | grep -q _ipbp_iso_to_pbp
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iPBP-ios-arm64-${{ matrix.shared == 'ON' && 'shared' || 'static' }}
+          path: build/iPBP.*
+
   msbuild:
     name: Visual Studio solution ${{ matrix.platform }}
     runs-on: windows-latest
