@@ -132,6 +132,15 @@ int ipbp_iso_to_pbp_reader(ipbp_job* job, const ipbp_reader* iso, const char* pb
     return job->finish(ipbp::isoToPbp(in, pbp, isoToPbpOptions(o), job->callbacks()));
 }
 
+int ipbp_iso_to_pbp_io(ipbp_job* job, const ipbp_reader* iso, const ipbp_writer* pbp, const ipbp_iso2pbp_options* o) {
+    job->cancel.reset();
+    if (!iso || !iso->read_at || !pbp || !pbp->write_at)
+        return job->finish(ipbp::Result::fail(ipbp::Status::InvalidInput, "missing reader or writer"));
+    CallbackInput in(*iso);
+    CallbackOutput out(*pbp);
+    return job->finish(ipbp::isoToPbp(in, out, isoToPbpOptions(o), job->callbacks()));
+}
+
 int ipbp_pbp_to_iso(ipbp_job* job, const char* pbp, const char* iso, const ipbp_pbp2iso_options* o) {
     job->cancel.reset();
     return job->finish(ipbp::pbpToIso(pbp, iso, pbpToIsoOptions(o), job->callbacks()));
@@ -179,6 +188,6 @@ int ipbp_check_iso(ipbp_job* job, const char* iso, uint64_t* fileSize, uint64_t*
     return job->finish(r);
 }
 
-const char* ipbp_version(void) { return "1.2.0"; }
+const char* ipbp_version(void) { return "1.3.0"; }
 
 }  // extern "C"

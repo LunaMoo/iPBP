@@ -129,6 +129,13 @@ IPBP_API int ipbp_iso_to_pbp_reader(ipbp_job* job, const ipbp_reader* iso, const
 IPBP_API int ipbp_pbp_to_iso_writer(ipbp_job* job, const char* pbp_path, const ipbp_writer* iso,
                                     const ipbp_pbp2iso_options* opt);
 
+/* ISO (through iso) -> EBOOT.PBP written through pbp, e.g. to build the PBP in memory and put it
+ * into an archive. Available since 1.3.0. The PBP's size isn't known up front: pbp->begin is not
+ * called, write_at may extend the output in any order, and finish gets the final size. On failure
+ * or cancellation what was written stays with the caller. */
+IPBP_API int ipbp_iso_to_pbp_io(ipbp_job* job, const ipbp_reader* iso, const ipbp_writer* pbp,
+                                const ipbp_iso2pbp_options* opt);
+
 IPBP_API int ipbp_read_pbp_info(ipbp_job* job, const char* pbp_path, ipbp_pbp_info* info);
 
 /* ISO dump size check (file size vs ISO9660 volume size). Returns IPBP_OK when the image could

@@ -616,6 +616,44 @@ static void testCApiCallbacks() {
     CHECK(dst.begun >= dst.finished && dst.finished == iso.size());
     CHECK(dst.d == iso);
 
+    // ISO in memory -> PBP in memory: the file's size (the header has random bytes), and it
+    // converts back to the ISO
+    {
+        struct Grow {
+            std::vector<uint8_t> d;
+            uint64_t finished = 0;
+        } g;
+        ipbp_writer gw;
+        gw.user = &g;
+        gw.begin = nullptr;
+        gw.write_at = [](void* u, uint64_t off, const void* buf, size_t len) -> int {
+            auto* d = (Grow*)u;
+            if (off + len > d->d.size()) d->d.resize((size_t)(off + len));
+            memcpy(d->d.data() + off, buf, len);
+            return 0;
+        };
+        gw.finish = [](void* u, uint64_t size) -> int {
+            auto* d = (Grow*)u;
+            d->finished = size;
+            d->d.resize((size_t)size);
+            return 0;
+        };
+        CHECK(ipbp_iso_to_pbp_io(job, &r, &gw, nullptr) == IPBP_OK);
+        CHECK(g.finished == g.d.size());
+        CHECK(g.d.size() == readFile(pbpP).size());
+        std::string memP = tmpPath("cb_mem.pbp");
+        if (FILE* f = fopen(memP.c_str(), "wb")) {
+            fwrite(g.d.data(), 1, g.d.size(), f);
+            fclose(f);
+        }
+        Dst back;
+        w.user = &back;
+        CHECK(ipbp_pbp_to_iso_writer(job, memP.c_str(), &w, nullptr) == IPBP_OK);
+        CHECK(back.d == iso);
+        std::remove(memP.c_str());
+        CHECK(ipbp_iso_to_pbp_io(job, &r, nullptr, nullptr) == IPBP_INVALID_INPUT);
+    }
+
     Dst refused;
     refused.refuse = true;
     w.user = &refused;
