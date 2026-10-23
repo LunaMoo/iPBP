@@ -18,7 +18,7 @@
 namespace ipbp {
 
 constexpr int kVersionMajor = 1;
-constexpr int kVersionMinor = 2;
+constexpr int kVersionMinor = 4;
 constexpr int kVersionPatch = 0;
 
 enum class Status {
@@ -168,5 +168,67 @@ Result checkIsoDump(const std::string& isoPath, IsoDumpCheck& out);
 
 // Suggested output names, mirroring the original GUI ("ULUS-12345.ISO" / "EBOOT.PBP").
 std::string suggestedIsoName(const PbpInfo& info);
+
+// ---------------------------------------------------------------- PSOne EBOOT.PBP (POPS)
+//
+// PlayStation discs as PSN-style EBOOT.PBPs (PSISOIMG / PSTITLEIMG, as popstation makes them):
+// raw 2352-byte sectors in 16-sector blocks, each deflated, with the disc's TOC, up to 5 discs.
+// Read by PSP firmware (POPS, with a DATA.PSP from a base PBP), PS Vita Adrenaline and PS1
+// emulators (DuckStation, Beetle PSX, PCSX-ReARMed). Needs zlib: without it (IPBP_WITH_PSX
+// undefined) these return Status::Unsupported.
+
+// A track of a disc image: frames (2352 bytes) from the start of the image.
+struct PsxTrack {
+    bool audio = false;
+    uint32_t start = 0;   // the track's first frame in the image (its INDEX 00 when the pregap is there)
+    uint32_t index1 = 0;  // INDEX 01
+};
+
+struct PsxDisc {
+    InputStream* image = nullptr;   // raw 2352-byte frames, every track back to back (one .bin)
+    std::vector<PsxTrack> tracks;   // empty: one data track
+    std::string discId;             // "SLUS00594"; empty: from the disc's SYSTEM.CNF
+};
+
+struct PsxToPbpOptions {
+    int level = 9;                  // deflate level 0 (stored) .. 9
+    std::string title;              // empty: the first disc's ID
+    // A PSOne Classic EBOOT.PBP to take DATA.PSP and STARTDAT (and ICON0, when none is given)
+    // from: what real PSPs need to start the game. Emulators don't.
+    std::string basePbpPath;
+    std::vector<uint8_t> icon0, pic0, pic1, snd0;  // optional PNGs (ICON0 80x80, PIC1 480x272) / AT3
+    std::vector<uint8_t> bootPng;   // boot screen in STARTDAT (needs a base PBP)
+    unsigned threads = 0;
+};
+
+Result psxToPbp(const std::vector<PsxDisc>& discs, OutputStream& pbp, const PsxToPbpOptions& opt = {},
+                const Callbacks& cb = {}, uint64_t* outPbpSize = nullptr);
+// "<pbpPath>.part", renamed on success.
+Result psxToPbp(const std::vector<PsxDisc>& discs, const std::string& pbpPath, const PsxToPbpOptions& opt = {},
+                const Callbacks& cb = {});
+
+struct PsxDiscInfo {
+    std::string discId;             // "SLUS00594"
+    uint32_t frames = 0;            // image length
+    std::vector<PsxTrack> tracks;
+    std::vector<int> dataModes;     // per track: 1 or 2 for data tracks (from the sector), 0 audio
+    uint32_t blocks = 0;
+    uint64_t storedBytes = 0;       // compressed size in the PBP
+};
+
+struct PsxInfo {
+    std::string title, discId;      // from PARAM.SFO
+    std::vector<PsxDiscInfo> discs;
+    bool hasDataPsp = false;        // a DATA.PSP is there (runs on a real PSP)
+};
+
+enum class PbpKind { Unknown, Psp, Psx };
+PbpKind pbpKind(InputStream& pbp);
+Result readPsxInfo(InputStream& pbp, PsxInfo& info);
+// Disc `disc` (0-based) as raw 2352-byte frames, every track back to back.
+Result pbpToPsx(InputStream& pbp, unsigned disc, OutputStream& image, const Callbacks& cb = {},
+                uint64_t* outImageSize = nullptr);
+// The disc ID from SYSTEM.CNF ("cdrom:\SLUS_005.94;1" -> "SLUS00594"), empty when there is none.
+std::string psxDiscId(InputStream& image);
 
 }  // namespace ipbp

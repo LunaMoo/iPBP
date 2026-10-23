@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(iPBP VERSION 1.3.0 LANGUAGES C CXX)
+project(iPBP VERSION 1.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,6 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(IPBP_BUILD_CLI "Build the ipbp command line tool" ON)
 option(IPBP_BUILD_TESTS "Build unit tests" ON)
 option(IPBP_SHARED "Build iPBP as a shared library" OFF)
+# PSOne EBOOTs need zlib: an existing target (e.g. a parent project's bundled zlib), else the system's.
+set(IPBP_ZLIB_TARGET "" CACHE STRING "zlib target to link for PSOne EBOOT support (empty: find_package(ZLIB))")
 
 set(IPBP_SOURCES
     src/capi.cpp
@@ -21,6 +23,7 @@ set(IPBP_SOURCES
     src/psp/iso9660.cpp
     src/psp/lzrc.cpp
     src/psp/sfo.cpp
+    src/psx.cpp
 )
 
 function(ipbp_configure target)
@@ -28,6 +31,10 @@ function(ipbp_configure target)
                                                 $<INSTALL_INTERFACE:include>
                                          PRIVATE src)
     target_link_libraries(${target} PUBLIC Threads::Threads)
+    if(IPBP_ZLIB)
+        target_link_libraries(${target} PRIVATE ${IPBP_ZLIB})
+        target_compile_definitions(${target} PRIVATE IPBP_WITH_PSX)
+    endif()
     if(WIN32)
         target_compile_definitions(${target} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     endif()
@@ -40,6 +47,16 @@ function(ipbp_configure target)
 endfunction()
 
 find_package(Threads REQUIRED)
+if(IPBP_ZLIB_TARGET AND TARGET ${IPBP_ZLIB_TARGET})
+    set(IPBP_ZLIB ${IPBP_ZLIB_TARGET})
+else()
+    find_package(ZLIB)
+    if(ZLIB_FOUND)
+        set(IPBP_ZLIB ZLIB::ZLIB)
+    else()
+        message(STATUS "iPBP: zlib not found, building without PSOne EBOOT support")
+    endif()
+endif()
 
 if(IPBP_SHARED)
     add_library(ipbp SHARED ${IPBP_SOURCES})

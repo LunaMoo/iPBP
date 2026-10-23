@@ -2,6 +2,8 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
+#include <algorithm>
 
 #include "ipbp/ipbp.h"
 #include "ipbp/ipbp.hpp"
@@ -188,6 +190,141 @@ int ipbp_check_iso(ipbp_job* job, const char* iso, uint64_t* fileSize, uint64_t*
     return job->finish(r);
 }
 
-const char* ipbp_version(void) { return "1.3.0"; }
+namespace {
+std::vector<ipbp::PsxDisc> psxDiscs(const ipbp_psx_disc* d, unsigned n, std::vector<std::unique_ptr<CallbackInput>>& keep) {
+    std::vector<ipbp::PsxDisc> out;
+    for (unsigned i = 0; i < n; i++) {
+        keep.emplace_back(new CallbackInput(d[i].image));
+        ipbp::PsxDisc x;
+        x.image = keep.back().get();
+        for (uint32_t t = 0; t < d[i].tracks && d[i].track; t++)
+            x.tracks.push_back(ipbp::PsxTrack{d[i].track[t].audio != 0, d[i].track[t].start, d[i].track[t].index1});
+        if (d[i].disc_id) x.discId = d[i].disc_id;
+        out.push_back(std::move(x));
+    }
+    return out;
+}
+ipbp::PsxToPbpOptions psxOptions(const ipbp_psx_options* o) {
+    ipbp_psx_options def;
+    if (!o) {
+        ipbp_psx_options_init(&def);
+        o = &def;
+    }
+    ipbp::PsxToPbpOptions opt;
+    opt.level = o->level;
+    if (o->title) opt.title = o->title;
+    if (o->base_pbp) opt.basePbpPath = o->base_pbp;
+    auto bytes = [](const uint8_t* p, size_t n) { return p && n ? std::vector<uint8_t>(p, p + n) : std::vector<uint8_t>(); };
+    opt.icon0 = bytes(o->icon0, o->icon0_size);
+    opt.pic0 = bytes(o->pic0, o->pic0_size);
+    opt.pic1 = bytes(o->pic1, o->pic1_size);
+    opt.bootPng = bytes(o->boot_png, o->boot_png_size);
+    opt.threads = o->threads;
+    return opt;
+}
+bool validDiscs(const ipbp_psx_disc* d, unsigned n) {
+    if (!d || n == 0) return false;
+    for (unsigned i = 0; i < n; i++)
+        if (!d[i].image.read_at) return false;
+    return true;
+}
+}  // namespace
+
+extern "C" {
+
+int ipbp_pbp_kind(const char* pbp) {
+    std::unique_ptr<ipbp::InputStream> in = ipbp::openInputFile(pbp ? pbp : "");
+    if (!in) return IPBP_PBP_UNKNOWN;
+    switch (ipbp::pbpKind(*in)) {
+    case ipbp::PbpKind::Psp: return IPBP_PBP_PSP;
+    case ipbp::PbpKind::Psx: return IPBP_PBP_PSX;
+    default: return IPBP_PBP_UNKNOWN;
+    }
+}
+
+void ipbp_psx_options_init(ipbp_psx_options* opt) {
+    memset(opt, 0, sizeof(*opt));
+    opt->level = 9;
+}
+
+int ipbp_psx_to_pbp(ipbp_job* job, const ipbp_psx_disc* discs, unsigned count, const char* pbp, const ipbp_psx_options* o) {
+    job->cancel.reset();
+    if (!validDiscs(discs, count) || !pbp)
+        return job->finish(ipbp::Result::fail(ipbp::Status::InvalidInput, "missing discs or output path"));
+    std::vector<std::unique_ptr<CallbackInput>> keep;
+    return job->finish(ipbp::psxToPbp(psxDiscs(discs, count, keep), pbp, psxOptions(o), job->callbacks()));
+}
+
+int ipbp_psx_to_pbp_io(ipbp_job* job, const ipbp_psx_disc* discs, unsigned count, const ipbp_writer* pbp,
+                       const ipbp_psx_options* o) {
+    job->cancel.reset();
+    if (!validDiscs(discs, count) || !pbp || !pbp->write_at)
+        return job->finish(ipbp::Result::fail(ipbp::Status::InvalidInput, "missing discs or writer"));
+    std::vector<std::unique_ptr<CallbackInput>> keep;
+    CallbackOutput out(*pbp);
+    return job->finish(ipbp::psxToPbp(psxDiscs(discs, count, keep), out, psxOptions(o), job->callbacks()));
+}
+
+int ipbp_read_psx_info(ipbp_job* job, const char* pbp, ipbp_psx_info* info) {
+    memset(info, 0, sizeof(*info));
+    std::string err;
+    std::unique_ptr<ipbp::InputStream> in = ipbp::openInputFile(pbp ? pbp : "", &err);
+    if (!in) return job->finish(ipbp::Result::fail(ipbp::Status::IoError, err));
+    ipbp::PsxInfo i;
+    ipbp::Result r = ipbp::readPsxInfo(*in, i);
+    if (r) {
+        strncpy(info->title, i.title.c_str(), sizeof(info->title) - 1);
+        strncpy(info->disc_id, i.discId.c_str(), sizeof(info->disc_id) - 1);
+        info->has_data_psp = i.hasDataPsp;
+        info->discs = (uint32_t)std::min<size_t>(i.discs.size(), IPBP_PSX_MAX_DISCS);
+        for (uint32_t d = 0; d < info->discs; d++) {
+            const ipbp::PsxDiscInfo& s = i.discs[d];
+            ipbp_psx_disc_info& o = info->disc[d];
+            strncpy(o.disc_id, s.discId.c_str(), sizeof(o.disc_id) - 1);
+            o.frames = s.frames;
+            o.blocks = s.blocks;
+            o.stored_bytes = s.storedBytes;
+            o.tracks = (uint32_t)std::min<size_t>(s.tracks.size(), IPBP_PSX_MAX_TRACKS);
+            for (uint32_t t = 0; t < o.tracks; t++) {
+                o.track[t].audio = s.tracks[t].audio;
+                o.track[t].start = s.tracks[t].start;
+                o.track[t].index1 = s.tracks[t].index1;
+                o.data_mode[t] = t < s.dataModes.size() ? s.dataModes[t] : 0;
+            }
+        }
+    }
+    return job->finish(r);
+}
+
+int ipbp_pbp_to_psx(ipbp_job* job, const char* pbp, unsigned disc, const ipbp_writer* image) {
+    job->cancel.reset();
+    if (!pbp || !image || !image->write_at)
+        return job->finish(ipbp::Result::fail(ipbp::Status::InvalidInput, "missing input path or writer"));
+    std::string err;
+    std::unique_ptr<ipbp::InputStream> in = ipbp::openInputFile(pbp, &err);
+    if (!in) return job->finish(ipbp::Result::fail(ipbp::Status::IoError, err));
+    ipbp::PsxInfo info;
+    ipbp::Result r = ipbp::readPsxInfo(*in, info);
+    if (!r) return job->finish(r);
+    if (disc >= info.discs.size())
+        return job->finish(ipbp::Result::fail(ipbp::Status::InvalidInput, "the EBOOT has no disc " + std::to_string(disc + 1)));
+    if (image->begin && image->begin(image->user, (uint64_t)info.discs[disc].frames * 2352) != 0)
+        return job->finish(ipbp::Result::fail(ipbp::Status::IoError, "the output refused the image size"));
+    CallbackOutput out(*image);
+    return job->finish(ipbp::pbpToPsx(*in, disc, out, job->callbacks()));
+}
+
+int ipbp_psx_disc_id(ipbp_job* job, const ipbp_reader* image, char id[16]) {
+    memset(id, 0, 16);
+    if (!image || !image->read_at) return job->finish(ipbp::Result::fail(ipbp::Status::InvalidInput, "missing reader"));
+    CallbackInput in(*image);
+    std::string s = ipbp::psxDiscId(in);
+    strncpy(id, s.c_str(), 15);
+    return job->finish(ipbp::Result::success());
+}
+
+}  // extern "C"
+
+extern "C" const char* ipbp_version(void) { return "1.4.0"; }
 
 }  // extern "C"

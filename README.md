@@ -1,6 +1,6 @@
 # iPBP
 
-Convert PSP UMD images between **ISO** and PSN-style **EBOOT.PBP** (`NPUMDIMG`), as a C/C++ library and a command-line tool.
+Convert PSP UMD images between **ISO** and PSN-style **EBOOT.PBP** (`NPUMDIMG`), as a C/C++ library and a command-line tool, and PlayStation discs to and from PSOne EBOOTs (see [PSOne EBOOTs](#psone-eboots)).
 
 iPBP replaces LMAN's *ISO~PBP Converter* (2015), which is no longer available. That program was a Windows GUI built on two native tools, **sign_np 1.0.4** (Hykem, mod by LMAN) for ISO→PBP and **npdpc_mod** (tpu, mod by LMAN) for PBP→ISO. iPBP reimplements both from their binaries, and the formats are cross-checked against the originals:
 
@@ -82,6 +82,23 @@ ipbp_job_destroy(job);
 ```
 
 `ipbp_iso_to_pbp_reader()` reads the ISO through an `ipbp_reader` and `ipbp_pbp_to_iso_writer()` writes it through an `ipbp_writer` (since 1.2.0), so a host can keep the ISO in memory, e.g. to repack an EBOOT as CSO or CHD without a temporary file. `ipbp_iso_to_pbp_io()` (since 1.3.0) also writes the PBP itself through an `ipbp_writer`, e.g. to build it in memory and store it in an archive.
+
+## PSOne EBOOTs
+
+Since 1.4.0 iPBP also converts PlayStation discs to and from PSOne EBOOT.PBPs (`PSISOIMG0000`, or
+`PSTITLEIMG000000` for up to five discs), in popstation's layout. That layout is what PS1 emulators
+(DuckStation, Beetle PSX, PCSX-ReARMed), Adrenaline and PSP firmware read.
+
+- **In:** a raw image of 2352-byte frames with every track back to back (a single `.bin`), and its
+  track list. Parsing cue sheets, CloneCD, CHD and similar formats is left to the caller (ISOPackager uses
+  CHDmodern for that). The disc ID comes from `SYSTEM.CNF`. Blocks are deflated in parallel, at
+  level 9 by default.
+- **Out:** `readPsxInfo` returns each disc's ID, length and tracks, and `pbpToPsx` writes a disc back
+  as the same raw image.
+- **Real PSP:** it also needs DATA.PSP and STARTDAT. These are taken from a PSOne Classic EBOOT given as
+  `basePbpPath`. iPBP doesn't ship one, since it's Sony's code. Emulators don't need it.
+- **zlib:** this part needs it. CMake uses `IPBP_ZLIB_TARGET` when that names a target, and
+  `find_package(ZLIB)` otherwise. Without zlib, these functions return `Unsupported`.
 
 ## Building
 

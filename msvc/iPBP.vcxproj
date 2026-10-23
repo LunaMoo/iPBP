@@ -71,6 +71,7 @@
     <ClCompile Include="..\src\psp\iso9660.cpp" />
     <ClCompile Include="..\src\psp\lzrc.cpp" />
     <ClCompile Include="..\src\psp\sfo.cpp" />
+    <ClCompile Include="..\src\psx.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\ipbp\ipbp.h" />

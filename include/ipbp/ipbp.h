@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: see LICENSE
  *
- * iPBP C API - convert between PSP UMD ISO images and PSN-style EBOOT.PBP (NPUMDIMG) files.
+ * iPBP C API - convert between PSP UMD ISO images and PSN-style EBOOT.PBP (NPUMDIMG) files,
+ * and between PlayStation (PSOne) disc images and PSOne EBOOT.PBPs (PSISOIMG / PSTITLEIMG).
  *
  * Typical use:
  *     ipbp_job* job = ipbp_job_create();
@@ -141,6 +142,78 @@ IPBP_API int ipbp_read_pbp_info(ipbp_job* job, const char* pbp_path, ipbp_pbp_in
 /* ISO dump size check (file size vs ISO9660 volume size). Returns IPBP_OK when the image could
  * be inspected; the dump is good when *file_size == *volume_size. */
 IPBP_API int ipbp_check_iso(ipbp_job* job, const char* iso_path, uint64_t* file_size, uint64_t* volume_size);
+
+
+/* ---- PSOne EBOOT.PBP (POPS), since 1.4.0 -----------------------------------------------------
+ *
+ * PlayStation discs as EBOOT.PBPs as popstation makes them: raw 2352-byte sectors in deflated
+ * 16-sector blocks, with the disc's TOC; up to 5 discs in one file. PS1 emulators (DuckStation,
+ * Beetle PSX, PCSX-ReARMed) and Adrenaline read them; a real PSP also needs DATA.PSP and STARTDAT,
+ * which come from a PSOne Classic EBOOT given as base_pbp. Needs zlib: a build without it
+ * returns IPBP_UNSUPPORTED from these. */
+
+#define IPBP_PBP_UNKNOWN 0
+#define IPBP_PBP_PSP 1 /* NPUMDIMG: a PSP game */
+#define IPBP_PBP_PSX 2 /* PSISOIMG / PSTITLEIMG: a PSOne game */
+#define IPBP_PSX_MAX_DISCS 5
+#define IPBP_PSX_MAX_TRACKS 99
+
+/* A track, in frames (2352 bytes) from the start of the disc image. */
+typedef struct ipbp_psx_track {
+    int audio;       /* 0: data track, 1: audio */
+    uint32_t start;  /* the track's first frame in the image (its INDEX 00 when the pregap is there) */
+    uint32_t index1; /* INDEX 01 */
+} ipbp_psx_track;
+
+typedef struct ipbp_psx_disc {
+    ipbp_reader image;            /* raw 2352-byte frames, every track back to back (one .bin) */
+    uint32_t tracks;              /* 0: one data track */
+    const ipbp_psx_track* track;
+    const char* disc_id;          /* "SLUS00594"; NULL: from the disc's SYSTEM.CNF */
+} ipbp_psx_disc;
+
+typedef struct ipbp_psx_options {
+    int level;                    /* deflate 0 (stored) .. 9, default 9 */
+    const char* title;            /* NULL: the first disc's ID */
+    const char* base_pbp;         /* PSOne Classic EBOOT.PBP for DATA.PSP / STARTDAT (real PSPs), or NULL */
+    const uint8_t* icon0; size_t icon0_size;  /* optional PNGs: ICON0 80x80, PIC0, PIC1 480x272 */
+    const uint8_t* pic0;  size_t pic0_size;
+    const uint8_t* pic1;  size_t pic1_size;
+    const uint8_t* boot_png; size_t boot_png_size;  /* boot screen in STARTDAT (with base_pbp) */
+    unsigned threads;
+} ipbp_psx_options;
+
+typedef struct ipbp_psx_disc_info {
+    char disc_id[16];
+    uint32_t frames;              /* image length in 2352-byte frames */
+    uint32_t tracks;
+    ipbp_psx_track track[IPBP_PSX_MAX_TRACKS];
+    int data_mode[IPBP_PSX_MAX_TRACKS];  /* 1 / 2 for data tracks, 0 for audio */
+    uint32_t blocks;
+    uint64_t stored_bytes;
+} ipbp_psx_disc_info;
+
+typedef struct ipbp_psx_info {
+    char title[129];
+    char disc_id[16];
+    uint32_t discs;
+    int has_data_psp;             /* a DATA.PSP is there: it can run on a real PSP */
+    ipbp_psx_disc_info disc[IPBP_PSX_MAX_DISCS];
+} ipbp_psx_info;
+
+/* IPBP_PBP_PSP, IPBP_PBP_PSX or IPBP_PBP_UNKNOWN (not a PBP, or one this can't read). */
+IPBP_API int ipbp_pbp_kind(const char* pbp_path);
+IPBP_API void ipbp_psx_options_init(ipbp_psx_options* opt);
+IPBP_API int ipbp_psx_to_pbp(ipbp_job* job, const ipbp_psx_disc* discs, unsigned count, const char* pbp_path,
+                             const ipbp_psx_options* opt);
+/* The PBP through a writer (its size isn't known up front, as with ipbp_iso_to_pbp_io). */
+IPBP_API int ipbp_psx_to_pbp_io(ipbp_job* job, const ipbp_psx_disc* discs, unsigned count, const ipbp_writer* pbp,
+                                const ipbp_psx_options* opt);
+IPBP_API int ipbp_read_psx_info(ipbp_job* job, const char* pbp_path, ipbp_psx_info* info);
+/* Disc `disc` (0-based) as raw frames through image (begin gets frames * 2352). */
+IPBP_API int ipbp_pbp_to_psx(ipbp_job* job, const char* pbp_path, unsigned disc, const ipbp_writer* image);
+/* The disc ID from SYSTEM.CNF into id[16] ("" when there is none). */
+IPBP_API int ipbp_psx_disc_id(ipbp_job* job, const ipbp_reader* image, char id[16]);
 
 IPBP_API const char* ipbp_version(void);
 

@@ -697,6 +697,217 @@ static void testDumpCheck() {
     std::remove(p.c_str());
 }
 
+// ------------------------------------------------------------------ PSOne EBOOTs
+
+// A PlayStation disc: MODE2 form 1 raw sectors with ISO9660 and a SYSTEM.CNF, then `audioFrames`
+// frames of "audio".
+static std::vector<uint8_t> makePsxDisc(uint32_t dataSectors, const std::string& boot, uint32_t audioFrames, uint32_t seed) {
+    const uint32_t S = 2048, R = 2352;
+    std::vector<uint8_t> iso((size_t)dataSectors * S, 0);
+    uint8_t* pvd = &iso[16 * S];
+    pvd[0] = 1;
+    memcpy(pvd + 1, "CD001", 5);
+    pvd[6] = 1;
+    both32(pvd + 80, dataSectors);
+    dirRec(pvd + 156, "", 18, S, true);
+    iso[17 * S] = 255;
+    memcpy(&iso[17 * S + 1], "CD001", 5);
+    std::string cnf = "BOOT = " + boot + "\r\nTCB = 4\r\nEVENT = 10\r\nSTACK = 801FFFF0\r\n";
+    uint8_t* r = &iso[18 * S];
+    r += dirRec(r, "", 18, S, true);
+    r += dirRec(r, "\x01", 18, S, true);
+    dirRec(r, "SYSTEM.CNF;1", 19, (uint32_t)cnf.size(), false);
+    memcpy(&iso[19 * S], cnf.data(), cnf.size());
+    std::mt19937 rng(seed);
+    for (uint32_t s = 24; s < dataSectors; s++)
+        for (uint32_t i = 0; i < S; i++) iso[(size_t)s * S + i] = (s % 3) ? (uint8_t)rng() : (uint8_t)(i / 7);
+    std::vector<uint8_t> raw((size_t)(dataSectors + audioFrames) * R, 0);
+    auto b = [](uint32_t v) { return (uint8_t)((v / 10) << 4 | (v % 10)); };
+    for (uint32_t s = 0; s < dataSectors; s++) {
+        uint8_t* p = &raw[(size_t)s * R];
+        memset(p + 1, 0xff, 10);
+        uint32_t a = s + 150;
+        p[12] = b(a / 4500);
+        p[13] = b((a / 75) % 60);
+        p[14] = b(a % 75);
+        p[15] = 2;
+        p[18] = p[22] = 8;  // form 1 data
+        memcpy(p + 24, &iso[(size_t)s * S], S);
+    }
+    for (size_t i = (size_t)dataSectors * R; i < raw.size(); i++) raw[i] = (uint8_t)(rng() >> (i % 5));
+    return raw;
+}
+
+static void testPsx() {
+    printf("PSOne EBOOTs\n");
+    {
+        std::vector<uint8_t> probe(2352 * 20, 0);
+        MemIn in(probe);
+        PsxDisc d;
+        d.image = &in;
+        MemOut out;
+        if (psxToPbp({d}, out).status == Status::Unsupported) {
+            printf("  skipped: built without zlib\n");
+            return;
+        }
+    }
+    // One disc: a data track, and an audio track with a 2-second pregap in the image.
+    std::vector<uint8_t> disc = makePsxDisc(300, "cdrom:\\SLUS_005.94;1", 400, 3);
+    CHECK(disc.size() % 2352 == 0);
+    {
+        MemIn in(disc);
+        CHECK(psxDiscId(in) == "SLUS00594");
+    }
+    std::vector<PsxTrack> tracks = {PsxTrack{false, 0, 0}, PsxTrack{true, 300, 450}};
+    for (int level : {9, 1, 0}) {
+        MemIn in(disc);
+        PsxDisc d;
+        d.image = &in;
+        d.tracks = tracks;
+        PsxToPbpOptions o;
+        o.level = level;
+        o.title = "iPBP PSOne Test";
+        MemOut pbp;
+        Result r = psxToPbp({d}, pbp, o);
+        CHECK(r.ok());
+        MemIn pin(pbp.d);
+        CHECK(pbpKind(pin) == PbpKind::Psx);
+        PsxInfo info;
+        CHECK(readPsxInfo(pin, info).ok());
+        CHECK(info.title == "iPBP PSOne Test" && info.discId == "SLUS00594" && !info.hasDataPsp);
+        CHECK(info.discs.size() == 1);
+        if (info.discs.size() == 1) {
+            const PsxDiscInfo& di = info.discs[0];
+            CHECK(di.discId == "SLUS00594" && di.frames == 700);
+            CHECK(di.tracks.size() == 2);
+            if (di.tracks.size() == 2) {
+                CHECK(!di.tracks[0].audio && di.tracks[0].start == 0 && di.tracks[0].index1 == 0);
+                CHECK(di.tracks[1].audio && di.tracks[1].start == 300 && di.tracks[1].index1 == 450);
+                CHECK(di.dataModes[0] == 2 && di.dataModes[1] == 0);
+            }
+            if (level == 9) CHECK(di.storedBytes < disc.size());
+            if (level == 0) CHECK(di.storedBytes == (uint64_t)di.blocks * 0x9300);
+        }
+        // The layout emulators rely on.
+        uint32_t psar = rd32(&pbp.d[0x24]);
+        CHECK(memcmp(&pbp.d[psar], "PSISOIMG0000", 12) == 0 && memcmp(&pbp.d[psar + 0x400], "_SLUS_00594", 11) == 0);
+        CHECK(rd32(&pbp.d[psar + 0xBFC]) == 0x100000);
+        CHECK(pbp.d[psar + 0x800 + 2] == 0xA0 && pbp.d[psar + 0x80A + 2] == 0xA1 && pbp.d[psar + 0x814 + 2] == 0xA2);
+        MemOut back;
+        CHECK(pbpToPsx(pin, 0, back).ok());
+        CHECK(back.d == disc);
+    }
+
+    // Two discs in one EBOOT.
+    std::vector<uint8_t> disc2 = makePsxDisc(200, "cdrom:\\SLUS_005.95;1", 0, 4);
+    {
+        MemIn a(disc), b2(disc2);
+        PsxDisc d1, d2;
+        d1.image = &a;
+        d1.tracks = tracks;
+        d2.image = &b2;
+        MemOut pbp;
+        CHECK(psxToPbp({d1, d2}, pbp, PsxToPbpOptions{}).ok());
+        MemIn pin(pbp.d);
+        PsxInfo info;
+        CHECK(readPsxInfo(pin, info).ok());
+        CHECK(info.discs.size() == 2);
+        if (info.discs.size() == 2) {
+            CHECK(info.discs[0].discId == "SLUS00594" && info.discs[1].discId == "SLUS00595");
+            CHECK(info.discs[1].tracks.size() == 1 && info.discs[1].frames == 200);
+        }
+        uint32_t psar = rd32(&pbp.d[0x24]);
+        CHECK(memcmp(&pbp.d[psar], "PSTITLEIMG000000", 16) == 0);
+        MemOut o1, o2;
+        CHECK(pbpToPsx(pin, 0, o1).ok() && o1.d == disc);
+        CHECK(pbpToPsx(pin, 1, o2).ok() && o2.d == disc2);
+        CHECK(!pbpToPsx(pin, 2, o2).ok());
+    }
+
+    // A base PBP: DATA.PSP and STARTDAT come from it, with our boot screen.
+    {
+        std::vector<uint8_t> base(0x50000 + 0x2000, 0);
+        memcpy(&base[0], "\0PBP", 4);
+        wr32(&base[4], 0x10000);
+        std::vector<uint8_t> dataPsp(0x400, 0x5A);
+        wr32(&dataPsp[0x2C], (uint32_t)dataPsp.size());
+        uint32_t offs[8] = {0x28, 0x28, 0x28, 0x28, 0x28, 0x28, 0x28, 0x50000};
+        offs[7] = 0x28 + (uint32_t)dataPsp.size();
+        offs[7] = 0x10000;
+        for (int i = 0; i < 8; i++) wr32(&base[8 + 4 * i], offs[i]);
+        memcpy(&base[0x28], dataPsp.data(), dataPsp.size());
+        memcpy(&base[0x10000], "PSISOIMG0000", 12);
+        wr32(&base[0x1000C], 0x30000);  // STARTDAT at PSAR + 0x30000
+        uint8_t* sd = &base[0x40000];
+        memcpy(sd, "STARTDAT", 8);
+        wr32(sd + 16, 0x50);
+        wr32(sd + 20, 0x100);
+        memset(sd + 0x50, 0xB0, 0x100);  // the base's boot PNG
+        base.resize(0x40000 + 0x50 + 0x100);
+        const char* pgd = "\0PGD and the rest";
+        base.insert(base.end(), pgd, pgd + 17);
+        std::string basePath = tmpPath("psx_base.pbp");
+        writeFile(basePath, base);
+
+        MemIn in(disc2);
+        PsxDisc d;
+        d.image = &in;
+        PsxToPbpOptions o;
+        o.basePbpPath = basePath;
+        o.bootPng.assign(64, 0xC1);
+        MemOut pbp;
+        Result r = psxToPbp({d}, pbp, o);
+        CHECK(r.ok());
+        MemIn pin(pbp.d);
+        PsxInfo info;
+        CHECK(readPsxInfo(pin, info).ok() && info.hasDataPsp);
+        uint32_t psp = rd32(&pbp.d[0x20]);
+        CHECK(memcmp(&pbp.d[psp], dataPsp.data(), dataPsp.size()) == 0);
+        uint32_t psar = rd32(&pbp.d[0x24]);
+        uint32_t end = rd32(&pbp.d[psar + 0x0C]);
+        CHECK(psar + end + 0x50 + 64 + 17 == pbp.d.size());
+        if (psar + end + 8 <= pbp.d.size()) {
+            CHECK(memcmp(&pbp.d[psar + end], "STARTDAT", 8) == 0 && rd32(&pbp.d[psar + end + 20]) == 64);
+            CHECK(pbp.d[psar + end + 0x50] == 0xC1 && memcmp(&pbp.d[pbp.d.size() - 17], pgd, 17) == 0);
+        }
+        MemOut back;
+        CHECK(pbpToPsx(pin, 0, back).ok() && back.d == disc2);
+        // C API: kind, info and the image through a writer.
+        std::string path = tmpPath("psx_eboot.pbp");
+        writeFile(path, pbp.d);
+        CHECK(ipbp_pbp_kind(path.c_str()) == IPBP_PBP_PSX);
+        ipbp_job* job = ipbp_job_create();
+        ipbp_psx_info ci;
+        CHECK(ipbp_read_psx_info(job, path.c_str(), &ci) == IPBP_OK && ci.discs == 1 && ci.disc[0].frames == 200 && ci.has_data_psp);
+        CHECK(strcmp(ci.disc[0].disc_id, "SLUS00595") == 0);
+        std::vector<uint8_t> got;
+        ipbp_writer w = {&got, [](void* u, uint64_t size) { ((std::vector<uint8_t>*)u)->resize((size_t)size); return 0; },
+                         [](void* u, uint64_t off, const void* buf, size_t len) {
+                             memcpy(((std::vector<uint8_t>*)u)->data() + off, buf, len);
+                             return 0;
+                         },
+                         nullptr};
+        CHECK(ipbp_pbp_to_psx(job, path.c_str(), 0, &w) == IPBP_OK && got == disc2);
+        ipbp_job_destroy(job);
+        detail::removeFile(path);
+        detail::removeFile(basePath);
+    }
+
+    // Bad input: not raw sectors, audio first.
+    {
+        std::vector<uint8_t> odd(2048 * 10);
+        MemIn in(odd);
+        PsxDisc d;
+        d.image = &in;
+        MemOut pbp;
+        CHECK(!psxToPbp({d}, pbp).ok());
+        MemIn in2(disc);
+        d.image = &in2;
+        d.tracks = {PsxTrack{true, 0, 0}};
+        CHECK(!psxToPbp({d}, pbp).ok());
+    }
+}
+
 int main() {
     testLzrcEncoders();
     testRoundTrips();
@@ -710,6 +921,7 @@ int main() {
     testCApi();
     testCApiCallbacks();
     testDumpCheck();
+    testPsx();
     printf("%d/%d checks passed\n", g_checks - g_failures, g_checks);
     return g_failures ? 1 : 0;
 }
