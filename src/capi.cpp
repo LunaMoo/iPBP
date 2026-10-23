@@ -190,6 +190,8 @@ int ipbp_check_iso(ipbp_job* job, const char* iso, uint64_t* fileSize, uint64_t*
     return job->finish(r);
 }
 
+}  // extern "C"
+
 namespace {
 std::vector<ipbp::PsxDisc> psxDiscs(const ipbp_psx_disc* d, unsigned n, std::vector<std::unique_ptr<CallbackInput>>& keep) {
     std::vector<ipbp::PsxDisc> out;
@@ -323,8 +325,6 @@ int ipbp_psx_disc_id(ipbp_job* job, const ipbp_reader* image, char id[16]) {
     return job->finish(ipbp::Result::success());
 }
 
-}  // extern "C"
-
-extern "C" const char* ipbp_version(void) { return "1.4.0"; }
+const char* ipbp_version(void) { return "1.4.0"; }
 
 }  // extern "C"
